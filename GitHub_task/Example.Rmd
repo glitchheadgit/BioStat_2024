@@ -13,7 +13,7 @@ toc-title: "Оглавление"
 
 ```{r}
 .libPaths(c('/packages', .libPaths()))
-library(readr)
+library(tidyverse)
 knitr::opts_chunk$set()
 ```
 
@@ -25,4 +25,17 @@ if [ ! -f data_tsv.tsv ]; then wget https://stepik.org/media/attachments/course/
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 rmarkdown::paged_table(read_tsv("data_tsv.tsv"))
 ```
+# Базовые статистики
 
+```{r}
+rds <- read_rds('https://stepik.org/media/attachments/lesson/790859/numeric_data.rds')
+dsc <- psych::describe(rds) %>% round(2)
+rmarkdown::paged_table(dsc)
+```
+
+# Серьезная работа с DataFrame'ами
+
+```{r}
+data <- read_tsv('https://stepik.org/media/attachments/lesson/790863/data_tsv.tsv')
+data
+```
