@@ -12,8 +12,8 @@ toc-title: "Оглавление"
 ---
 
 ```{r}
-.libPaths(c('/packages', .libPaths()))
 library(tidyverse)
+library(flextable)
 knitr::opts_chunk$set()
 ```
 
@@ -39,3 +39,15 @@ rmarkdown::paged_table(dsc)
 data <- read_tsv('https://stepik.org/media/attachments/lesson/790863/data_tsv.tsv')
 data
 ```
+```{r}
+data %>% 
+  select(`Группа`, where(is.numeric)) %>% 
+  group_by(`Группа`) %>% 
+  summarize(across(where(is.numeric), function(x) mean(x, na.rm=T))) %>% 
+  flextable() %>% 
+  theme_box() %>% 
+  align(align='center', part='all') %>% 
+  bold(j = 1) %>% 
+  italic(j = 2:length(.))
+```
+
