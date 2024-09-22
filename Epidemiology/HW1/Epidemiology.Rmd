@@ -1,0 +1,89 @@
+---
+title: "Домашнее задание по мерам заболеваемости/случаемости"
+author: "Ustin Zolotikov"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+  word_document:
+    toc: true
+  pdf_document:
+    toc: true
+    latex_engine: xelatex
+subtitle: BioStat 2024
+toc-title: Оглавление
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(flextable)
+knitr::opts_chunk$set()
+```
+
+# Датасет
+
+Описывает аренду автомобилей водителями и попадание ДТП в течение года.
+
+- id - идентификатор,
+- experience - стаж вождения (0 - нет стажа, 1 - есть стаж),
+- accident - ДТП (0 - возврат из аренды целого автомобиля, 1 - возврат из аренды автомобиля после ДТП),
+- start - день начала аренды,
+- stop - день прекращения аренды.
+```{r include=FALSE}
+data <- read_csv('carrental.csv')
+```
+
+```{r warning=FALSE, paged.print=TRUE}
+summary(data %>% select(!id))
+head(data)
+```
+
+    
+# Находим распространенность “experience”
+```{r}
+prevalance <- sum(data$experience) / length(data$experience)
+```
+```{r echo=FALSE}
+paste('Prevalance =', prevalance)
+```
+
+Распространенность показывает, что 32% водителей, участвовавших в исследовании, имели стаж.
+
+# Находим риск “accident” в общей группе, в группе “experience” и в группе без “experience”
+```{r}
+exp <- data %>% filter(experience == 1)
+noexp <- data %>% filter(experience == 0)
+incidence_all <- sum(data$accident) / length(data$accident)
+incidence_exp <- sum(exp$accident) / length(exp$accident)
+incidence_noexp <- sum(noexp$accident) / length(noexp$accident)
+```
+```{r echo=FALSE}
+paste('Incidence (1 year) =', incidence_all)
+paste('Incidence in experienced group (1 year) =', incidence_exp)
+paste('Incidence in unexperienced group (1 year) =', incidence_noexp)
+```
+Из годового наблюдения можно вывести риск водителей попасть в ДТП = 22%, при этом риск опытных водителей = 9.375%, а неопытных = 27.94%(выше в 3 раза!). В целом, ожидаемо, что риск попасть в аварию выше у водителей без опыта. 
+
+Риски рассчитывались отношением количества новых случаев дтп (в группе) к количеству новых случаев взятия в аренду автомобиля (в группе) в течение периода наблюдения (1 год).
+
+# Находим плотность событий (incidence rate) в общей группе, в группе “experience” и в группе без “experience”
+```{r}
+patient_time_all <- sum(data$stop - data$start)
+patient_time_exp <- sum(exp$stop - exp$start)
+patient_time_noexp <- sum(noexp$stop - noexp$start)
+
+incidence_rate_all <- sum(data$accident) / patient_time_all
+incidence_rate_exp <- sum(exp$accident) / patient_time_exp
+incidence_rate_noexp <- sum(noexp$accident) / patient_time_noexp
+```
+
+```{r echo=FALSE}
+paste('Incidence rate (1 day) =', incidence_rate_all)
+paste('Incidence rate in experienced group (1 day) =', incidence_rate_exp)
+paste('Incidence rate in unexperienced group (1 day) =', incidence_rate_noexp)
+```
+
+Плотность событий за день показывает, что в день в среднем происходит 0.3% ДТП среди всех водителей, 0.3% среди опытных водителей и 0.3% среди неопытных водителей. Плотность событий между группами практически не различается, однако нужно иметь ввиду, что пациенто-время в разы больше у необытных водителей(6278 дней), чем у опытных водителей(944 дней).
+

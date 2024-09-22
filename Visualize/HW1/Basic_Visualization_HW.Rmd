@@ -1,0 +1,173 @@
+---
+title: "Базовая визуализация"
+author: "Золотиков У. Е."
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+subtitle: BioStat 2024
+toc-title: Оглавление
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set()
+
+data <- read_csv('data/hogwarts.csv')
+data$course <- data$course %>% as.factor()
+data$house <- data$house %>% as.factor()
+data$id <- data$id %>% as.factor()
+data$wand <- data$wand %>% as.factor()
+```
+
+## Столбчатые диаграммы 
+
+### 1
+```{r}
+ggplot(data) +
+  geom_bar(aes(x=course, fill = course), col='#1D3461') +
+  theme_bw() +
+  scale_colour_manual(values = c('1' = '#2e86abff', '2' = '#a23b72ff', '3' = '#f18f01ff', '4' = '#c73e1dff', '5' = '#EAF0CE', '6' = '#A6D3A0', '7' = '#E0D3DE'), aesthetics = 'fill')
+```
+
+### 2
+```{r}
+ggplot(data) +
+  geom_bar(aes(x=house, fill = blood_status), position = 'fill') +
+  theme_bw() +
+  labs(y = "Fraction", x = "House", fill = "Blood status")
+```
+Можно сделать вывод, что Слизерин единственный факультет, где отсутствуют маглорождённые и преобладают чистокровные студенты.
+
+### 3
+```{r}
+filtered_data <- data %>%
+  filter(blood_status %in% c("Pure-blood", "Muggle-borned"))
+
+ggplot(filtered_data) +
+  geom_bar(aes(x = house, fill = blood_status), position = "fill") +
+  scale_fill_discrete(labels = c('Маглорождённые', 'Чистокровные')) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  theme_bw() +
+  labs(y = "Доля студентов", x = "Факультет", fill = "Происхождение")
+```
+
+## Боксплоты
+
+### 1
+
+```{r}
+ggplot(data) +
+  geom_boxplot(aes(x=fct_reorder(house, `week 3`, .desc=T), y=`week 3`)) +
+  labs(x = 'House', y = 'Scores, week 3')
+```
+
+### 2
+
+```{r fig.height=14, fig.width=14}
+ggplot(data) +
+  geom_boxplot(aes(x=fct_reorder(house, `week 3`, .desc=T), y=`week 3`, fill=blood_status), notch=T) +
+  labs(x = 'House', y = 'Scores, week 3')
+```
+
+### 3
+
+```{r echo=TRUE, fig.height=14, fig.width=14, message=FALSE, warning=FALSE}
+box <- ggplot(data) +
+  geom_boxplot(aes(x=fct_reorder(house, `week 3`, .desc=T), y=`week 3`, fill=blood_status), notch=T, outlier.colour=NA, width = 0.7, linewidth=0.3) +
+  labs(x='House', y='Scores, week 3', title='Week 3 scores distribution by faculty', subtitle='Task 3') +
+  geom_jitter(aes(x=house, y=`week 3`))
+
+box
+```
+
+## Разное
+
+### 1
+```{r}
+data %>% filter(course == 5) %>% 
+  ggplot() +
+  geom_segment(aes(x = fct_reorder(id, result, .desc=T), 
+                   xend = fct_reorder(id, result), 
+                   y = 0, 
+                   yend = result)) +
+    geom_point(aes(x = fct_reorder(id, result, .desc=T), 
+                 y = result,
+                 col = wand), 
+             size = 1) +
+  scale_colour_manual(
+    values = c('Dragon heartstring' = 'red', 'Phoenix feather' = 'yellow', 'Unicorn hair' = 'gray')
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+### 2
+```{r}
+ggplot(data) +
+  geom_histogram(aes(x=Astronomy_exam, fill=factor(house=='Slytherin', labels=c('not', 'Slytherin')))) +
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        axis.title.y = element_text(size = 20),
+        axis.title.x = element_text(size = 22),
+        legend.title = element_text(size = 20)) +
+  labs(y='Number of students', fill='Slytherin') +
+  scale_fill_manual('', values=c('Slytherin'='green'))
+```
+
+### 3
+```{r}
+theme_custom <- theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 25),
+    axis.text.x = element_text(angle = 12),
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    panel.background = element_rect(fill = "white", color = 'black'),
+    plot.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(color = "gray"),
+    panel.grid.minor = element_line(color = "lightgray"),
+    
+)
+
+box + theme_custom
+```
+
+
+## Фасетирование
+
+### 1
+
+Напишите, какой, по вашему мнению, способ фасетирования (по строкам
+или по столбцам) лучше использовать для визуализации гистограммы.
+Почему? А какой для визуализации violin-plot? Почему? Можно ли
+вывести общее правило?
+
+Гистограмма отображает распределение вдоль оси x, поэтому лучше фасетировать ее по строкам.
+Violin-plot, как и boxplot, имеет большое количество информации вдоль y-оси (медиана, квартили, выбросы и т.д.), поэтому этот тип графика лучше фасетировать по столбцам.
+
+Общее правило: фасетироват стоит делать вдоль оси на которой график имеет наибольшее количество информации.
+
+
+### 2
+```{r}
+ggplot(data) +
+  geom_histogram(aes(x=Herbology_exam), bins = 12) +
+  facet_wrap(vars(course), ncol=3)
+```
+
+
+### 3
+```{r fig.height=6, fig.width=12}
+ggplot(data) +
+  geom_density(aes(x=`Defence against the dark arts_exam`, fill='Защита от тёмной магии'), alpha=0.7, col='black', linewidth=1) +
+  geom_density(aes(x=Herbology_exam, fill='Травология'), alpha=0.7, col='darkgreen', linewidth=1) +
+  theme_custom +
+  facet_grid(rows=vars(sex), labeller = as_labeller(c(`female` = 'Женщина', `male` = 'Мужчина'))) +
+  labs(title = "Распределение оценок студентов",
+       x = "Оценка",
+       y = "Плотность вероятности") +
+  scale_fill_manual('Экзамен' , values=c('Защита от тёмной магии' = 'black', 'Травология' = 'green'))
+  
+```
+
