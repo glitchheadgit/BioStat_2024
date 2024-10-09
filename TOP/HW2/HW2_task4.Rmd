@@ -1,0 +1,94 @@
+---
+title: "Свойства зависимых величин. Математическое ожидание и дисперсия. Точность оценки. Задание 4"
+author: "Золотиков У. Е."
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+```
+
+## Модель пациента: исследование полного исцеления после приема препарата
+
+```{r pressure}
+
+p_true <- 0.7  # Истинная вероятность события, например полного исцеления (1 - исцеление, 0 - нет)
+n_patients <- 5  # Количество добровольцев в каждом эксперименте
+n_repeats <- 1000  # Количество повторений эксперимента
+
+# Генерируем выборки для каждого эксперимента
+df_all_repeats <- data.frame(
+  n_exp = rep(1:n_repeats, each = n_patients),
+  ID =  rep(1:n_patients, n_repeats),
+  outcome = rbinom(n_repeats * n_patients, 1, p_true)
+)
+
+# Оцениваем вероятность в каждом эксперименте
+df_sample_prob <- df_all_repeats %>%
+  group_by(n_exp) %>%
+  summarise(mean_outcome = mean(outcome)) %>%
+  ungroup()
+
+# Построим гистограмму распределения оценок вероятности
+ggplot(df_sample_prob, aes(x = mean_outcome)) +
+  geom_histogram(color = 'black', fill = 'white', binwidth = 0.02) +
+  theme_bw()
+
+```
+
+## Характеристики прироста
+
+```{r characteristics}
+
+# Истинная вероятность события
+print(p_true)
+
+# Оценка средней квадратичной ошибки (RMSE)
+error <- sqrt(mean((df_sample_prob$mean_outcome - p_true)^2))
+print(error)
+
+```
+
+## Оценка ошибки по выборке
+
+```{r sample_1}
+# Функция для оценки ошибки при разном количестве пациентов
+evaluate_error <- function(n_patients, p_true, n_repeats) {
+  df_all_repeats <- data.frame(
+    n_exp = rep(1:n_repeats, each = n_patients),
+    ID =  rep(1:n_patients, n_repeats),
+    outcome = rbinom(n_repeats * n_patients, 1, p_true)
+  )
+
+  df_sample_prob <- df_all_repeats %>%
+    group_by(n_exp) %>%
+    summarise(mean_outcome = mean(outcome)) %>%
+    ungroup()
+  
+  error <- sqrt(mean((df_sample_prob$mean_outcome - p_true)^2))
+  return(error)
+}
+```
+
+```{r}
+sample_sizes <- seq(5, 100, by = 5)
+errors <- sapply(sample_sizes, function(n) evaluate_error(n, p_true, n_repeats))
+
+# Строим график зависимости ошибки от объема выборки
+error_df <- data.frame(sample_size = sample_sizes, error = errors)
+
+ggplot(error_df, aes(x = sample_size, y = error)) +
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  labs(title = "Ошибка оценки вероятности в зависимости от объема выборки",
+       subtitle = "Эксперимент с оценкой вероятности полного исцеления пациента после приёма препарата",
+       x = "Размер выборки",
+       y = "Средняя квадратичная ошибка (RMSE)")
+```
