@@ -1,0 +1,443 @@
+---
+title: "Задание по автоматизации данных в R"
+subtitle: "Вариант 3"
+author: "Устин Золотиков"
+output: 
+  html_document:
+    toc: true
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(conflicted)  
+conflict_prefer("stats", winner="dplyr")
+conflict_prefer("MASS", winner="dplyr")
+conflict_prefer("Hmisc", winner="dplyr")
+library(tidyverse)
+library(RColorBrewer)
+library(ggbeeswarm)
+library(reshape2)
+library(corrplot)
+library(Hmisc)
+library(caTools)
+library(ROCR)
+library(MASS)
+```
+
+# Чтение данных
+
+В вашем варианте нужно использовать датасет framingham.
+
+```{r}
+df <- read_csv('data/raw/framingham.csv')
+```
+
+# Выведите общее описание данных
+
+```{r}
+cat('Общее описание данных\n')
+str(df)
+cat('\nОбщие характеристики данных\n')
+summary(df)
+cat('Всего NA', sum(is.na(df)))
+```
+
+# Очистка данных
+
+1) Уберите переменные, в которых пропущенных значений больше 20% или уберите субъектов со слишком большим количеством пропущенных значений. Или совместите оба варианта. Напишите обоснование, почему вы выбрали тот или иной вариант:
+```{r}
+(colSums(is.na(df)) / nrow(df) * 100) %>% round(digits=2) -> missing_percentage
+missing_percentage
+```
+
+**Обоснование**: 
+Ни у одной переменной нет пропущенных значений больше 20%, поэтому применим второй вариант с удалением субъектов с большим количеством пропущенных значений, сначала попробуем удалить всех субъектов с NA и посмотреть, сколько записей потеряем.
+
+```{r}
+row_threshold <- 0
+df_cleaned_rows <- df[rowSums(is.na(df)) <= row_threshold, ]
+cat('Записей в df', nrow(df), '\n')
+cat('Записей в df_cleaned_rows', nrow(df_cleaned_rows), '\n')
+df_cleaned_rows %>% summary()
+```
+
+Было потеряно 14% данных, осталось 3656 субъектов, что является достаточно большой выборкой, поэтому будем продолжать работу с таблицей без пропущенных значений.
+
+2) Переименуйте переменные в человекочитаемый вид (что делать с пробелами в названиях?);
+```{r}
+colnames(df_cleaned_rows)
+```
+Переименуем колонки, заменив camelCase на snake_case, при этом сделав названия переменных более понятными, пробелыы заменяем нижним подчеркиванием.
+```{r}
+df_cleaned_rows <- df_cleaned_rows %>% rename(sex="male", smokes="currentSmoker", cigarettes_per_day="cigsPerDay", body_mass_index="BMI", diabetic="diabetes", antihypertensitive_medication="BPMeds", systolic_blood_pressure="sysBP", diastolic_blood_pressure="diaBP", prevalent_stroke="prevalentStroke", prevalent_hypertensive="prevalentHyp", heart_rate="heartRate", coronary_heart_disease_in_10_years="TenYearCHD", total_cholesterol="totChol", education_level="education")
+```
+
+
+3) В соответствии с описанием данных приведите переменные к нужному типу (numeric или factor);
+```{r}
+df_cleaned_rows$sex <- factor(df_cleaned_rows$sex, levels=c(0, 1), labels=c("Female", "Male"))
+df_cleaned_rows$smokes <- factor(df_cleaned_rows$smokes, levels=c(0, 1), labels=c("No", "Yes"))
+df_cleaned_rows$education_level <- factor(df_cleaned_rows$education_level, levels=c(1, 2, 3, 4))
+df_cleaned_rows$coronary_heart_disease_in_10_years <- factor(df_cleaned_rows$coronary_heart_disease_in_10_years, levels=c(0, 1), labels=c("No", "Yes"))
+df_cleaned_rows$diabetic <- factor(df_cleaned_rows$diabetic, levels=c(0, 1), labels=c("No", "Yes"))
+df_cleaned_rows$prevalent_stroke <- factor(df_cleaned_rows$prevalent_stroke, levels=c(0, 1), labels=c("No", "Yes"))
+df_cleaned_rows$prevalent_hypertensive <- factor(df_cleaned_rows$prevalent_hypertensive, levels=c(0, 1), labels=c("No", "Yes"))
+df_cleaned_rows$antihypertensitive_medication <- factor(df_cleaned_rows$antihypertensitive_medication, levels=c(0, 1), labels=c("No", "Yes"))
+
+df_cleaned_rows %>% str
+```
+Все остальные переменные и так являются numeric, как и должно быть.
+
+4) Отсортируйте данные по возрасту по убыванию;
+```{r}
+df_cleaned_rows <- df_cleaned_rows %>% arrange(desc(age))
+df_cleaned_rows
+```
+
+
+5) Сохраните в файл outliers.csv субъектов, которые являются выбросами (например, по правилу трёх сигм) — это необязательное задание со звёздочкой;
+```{r}
+df_cleaned_rows %>% 
+  select_if(is.numeric) %>%
+  add_column(index=rownames(df_cleaned_rows)) %>%
+  pivot_longer(cols = -index, values_to = "value") -> df_longer
+
+mean_by_column <- colMeans(df_cleaned_rows %>% select_if(is.numeric))
+df_longer$mean <- mean_by_column[df_longer$name] %>% as.numeric()
+
+sd_by_column <- lapply(df_cleaned_rows %>% select_if(is.numeric), sd)
+df_longer$standard_deviation <- sd_by_column[df_longer$name] %>% as.numeric()
+
+outliers_index <- df_longer %>%
+  mutate(upper_limit = .$mean + 3 * .$standard_deviation, lower_limit = .$mean - 3 * .$standard_deviation) %>%
+  dplyr::filter(.$value < .$lower_limit | .$value > .$upper_limit) %>%
+  dplyr::select(index) %>%
+  unique() %>%
+  unlist() %>% 
+  as.numeric()
+
+df_cleaned_rows[outliers_index,] %>% write_csv('outliers.csv')
+```
+
+
+6) Присвойте получившийся датасет переменной "cleaned_data".
+
+```{r}
+cleaned_data <- df_cleaned_rows
+```
+
+# Сколько осталось переменных?
+
+```{r}
+ncol(cleaned_data)
+```
+
+# Сколько осталось случаев?
+
+```{r}
+nrow(cleaned_data)
+```
+
+# Есть ли в данных идентичные строки?
+
+```{r}
+cleaned_data %>% distinct() %>% nrow()
+```
+Нету идентичных строк
+
+# Сколько всего переменных с пропущенными значениями в данных и сколько пропущенных точек в каждой такой переменной?
+
+Мы удалили все пропущенные значения
+
+# Описательные статистики
+
+## Количественные переменные
+
+1) Рассчитайте для всех количественных переменных для каждой группы (TenYearCHD):
+
+1.1) Количество значений;
+
+1.2) Количество пропущенных значений;
+
+1.3) Среднее;
+
+1.4) Медиану;
+
+1.5) Стандартное отклонение;
+
+1.6) 25% квантиль и 75% квантиль;
+
+1.7) Интерквартильный размах;
+
+1.8) Минимум;
+
+1.9) Максимум;
+
+1.10) 95% ДИ для среднего - задание со звёздочкой.
+
+```{r}
+calculate_stats_numeric <- function(x) {
+  data.frame(
+    n = length(x),
+    na_count = sum(is.na(x)),
+    mean = mean(x, na.rm = TRUE),
+    median = median(x, na.rm = TRUE),
+    sd = sd(x, na.rm = TRUE),
+    q25 = quantile(x, probs = 0.25, na.rm = TRUE),
+    q75 = quantile(x, probs = 0.75, na.rm = TRUE),
+    iqr = IQR(x, na.rm = TRUE),
+    min = min(x, na.rm = TRUE),
+    max = max(x, na.rm = TRUE),
+    ci_min = t.test(x)$conf.int[1],
+    ci_max = t.test(x)$conf.int[2]
+  )
+}
+
+grouped_stats_numeric <- cleaned_data %>%
+  group_by(coronary_heart_disease_in_10_years) %>%
+  select_if(is.numeric) %>%
+  summarize_all(~calculate_stats_numeric(.)) %>% 
+  pivot_longer(-coronary_heart_disease_in_10_years, names_to = "Parameter") 
+
+
+View(grouped_stats_numeric)
+```
+
+## Категориальные переменные
+
+1) Рассчитайте для всех категориальных переменных для каждой группы (TenYearCHD):
+
+1.1) Абсолютное количество;
+
+1.2) Относительное количество внутри группы;
+
+1.3) 95% ДИ для доли внутри группы - задание со звёздочкой.
+
+```{r}
+calculate_stats_factor <- function(data, group_var, cat_vars) {
+  result <- map_dfr(cat_vars, function(var) {
+    data %>%
+      group_by(!!sym(group_var), !!sym(var)) %>%
+      summarise(
+        count = n(),
+        .groups = 'drop'
+      ) %>%
+      group_by(!!sym(group_var)) %>%
+      mutate(
+        total = sum(count),
+        proportion = count / total,
+        lower_ci = proportion - 1.96 * sqrt((proportion * (1 - proportion)) / total),
+        upper_ci = proportion + 1.96 * sqrt((proportion * (1 - proportion)) / total)
+      ) %>%
+      ungroup() %>%
+      dplyr::select(!!sym(group_var), !!sym(var), count, proportion, lower_ci, upper_ci)
+  })
+  
+  return(result)
+}
+cat_data <- (cleaned_data %>% select_if(is.factor) %>% colnames())
+
+grouped_stats_factor <- calculate_stats_factor(
+  cleaned_data %>% select_if(is.factor),
+  cat_data[8],
+  cat_data[1:7]
+  )
+
+grouped_stats_factor <- grouped_stats_factor %>%
+  pivot_longer(
+    -c('proportion', upper_ci, lower_ci, count, coronary_heart_disease_in_10_years),
+    names_to = "second_groupping_variable",
+    values_to = "second_groupping_variable_value",
+    ) %>% 
+  na.omit() %>% 
+  dplyr::select(1, 6, 7, 2, 3, 4, 5)
+  
+
+View(grouped_stats_factor)
+```
+
+# Визуализация
+
+## Количественные переменные
+
+1) Для каждой количественной переменной сделайте боксплоты по группам. Расположите их либо на отдельных рисунках, либо на одном, но читаемо;
+
+2) Наложите на боксплоты beeplots - задание со звёздочкой.
+
+3) Раскрасьте боксплоты с помощью библиотеки RColorBrewer.
+
+```{r}
+colors <- brewer.pal(n = 6, name = "Set2")
+
+categorical_columns <- cleaned_data %>% select_if(is.factor) %>% colnames()
+quantitative_columns <- cleaned_data %>% select_if(is.numeric) %>% colnames()
+
+
+create_beeswarm_boxplot <- function(cleaned_data, categorical, quantative, colors) {
+  ggplot(cleaned_data, aes_string(x=categorical, y=quantative)) +
+    geom_beeswarm(aes_string(color = categorical), size = 0.7, alpha = 0.9) + 
+    geom_boxplot(col='black', linewidth=1) +
+    scale_fill_manual(values = colors) +
+    scale_color_manual(values = colors) +
+    theme_minimal() +
+    labs(title = paste("Boxplots with Bee Swarm for", categorical, 'and', quantative))
+}
+
+
+dir.create('plots')
+for (cat in categorical_columns){
+  for (quant in quantitative_columns) {
+    p <- create_beeswarm_boxplot(cleaned_data = cleaned_data, categorical = cat, quantative = quant, colors =  colors)
+    ggsave(plot = p, filename = paste0('plots/', cat, '_', quant, '_boxplot_beeswarm.png'))
+  }
+}
+
+```
+
+## Категориальные переменные
+
+1) Сделайте подходящие визуализации категориальных переменных. Обоснуйте, почему выбрали именно этот тип.
+
+```{r}
+for (cat in categorical_columns) {
+  p <- ggplot(cleaned_data, aes_string(x = cat, fill = cat)) +
+    geom_bar() +  
+      scale_fill_manual(values = colors) +  
+    scale_color_manual(values = colors) +
+
+    theme_minimal() +
+    labs(title = paste("Distribution of", cat),
+         x = cat, y = "Count")
+  
+  print(p)
+}
+```
+Выбрал стобчатую диаграмму, так как в категориальных переменных немного классов (максимум 4) и для отображения распределения частот она прекрасно подойдет.
+
+
+# Статистические оценки
+
+## Проверка на нормальность
+
+1) Оцените каждую переменную на соответствие нормальному распределению с помощью теста Шапиро-Уилка. Какие из переменных являются нормальными и как как вы это поняли?
+
+```{r}
+for (variable in quantitative_columns) {
+  test_result <- shapiro.test(cleaned_data[[variable]])
+  cat("Shapiro-Wilk test for", variable, ":\n")
+  print(test_result)
+  cat("\n")
+}
+
+```
+Для каждой из переменной значение p-value теста Шапира-Уилка меньше 0.05 -> мы можем сделать вывод, что распределение наших переменных статистически значимо отличается от нормального. (нулевая гипотеза - распределение не отличается от нормального)
+
+2) Постройте для каждой количественной переменной QQ-плот. Отличаются ли выводы от теста Шапиро-Уилка? Какой метод вы бы предпочли и почему?
+
+```{r}
+par(mfrow = c(1, 2))
+
+for (variable in quantitative_columns) {
+  qqnorm(cleaned_data[[variable]], main = paste("QQ-Plot for", variable))
+  qqline(cleaned_data[[variable]], col = "red")
+}
+par(mfrow = c(1, 1))
+```
+В целом, выводы аналогичны с тестом Шапира-Уилка - данные не распределены нормально, однако qqplot позволил увидеть, что отклонения от нормального распределения в первую очередь идут по краям графиков, то есть стоит посмотреть на выбросы, может, именно они смещают нормальность? + к этому некоторые переменные ближе к нормальному распределению, а некоторые дальше, в случае теста Шапира-Уилка мы не можем этого узнать
+
+Для разведовательного анализа, мне кажется, QQ plot лучше, потому что он дает не только оценить нормальность, но и визуально посмотреть на отклонения в распределении наших данных.
+
+
+3) Ниже напишите, какие ещё методы проверки на нормальность вы знаете и какие у них есть ограничения.
+
+**Напишите текст здесь**
+
+1. Тест Колмогорова-Смирнова
+  Ограничения:
+  * Тест более чувствителен к различиям в центральной части распределения, чем на концах.
+  * Чувствителен к размеру выборки: в больших выборках даже небольшие отклонения от нормальности могут привести к статистически значимому результату.
+  * Необходимо задавать математическое ожидание и стандартное отклонение
+2. Тест Д'Агостино и Пирсона
+  Ограничения:
+  * Не работает на малых выборках
+
+## Сравнение групп
+
+1) Сравните группы (переменная **TenYearCHD**) по каждой переменной (как количественной, так и категориальной). Для каждой переменной выберите нужный критерий и кратко обоснуйте его выбор в комментариях.
+
+```{r}
+
+# Так как ни одна количественная переменная не оказалось нормально распределенной, то для сравнения с ними буду использовать тест Манна-Уитни
+# Для сравнения с категориальными переменными буду использовать Хи-квадрат, так как каждая из них достаточно представлена(минимальная группа = 21 у prevalent_stroke)
+
+for (variable in quantitative_columns) {
+  cat('Wilcox test for', variable, 'and coronary_heart_disease_in_10_years\n')
+  print(
+    wilcox.test(cleaned_data[[variable]] ~ cleaned_data$coronary_heart_disease_in_10_years)
+    )
+}
+
+for (variable in categorical_columns[1:7]) {
+  cat('Chi-squared test for', variable, 'and coronary_heart_disease_in_10_years\n')
+  print(
+    chisq.test(cleaned_data[variable], cleaned_data$coronary_heart_disease_in_10_years)
+  )
+}
+
+```
+
+# Далее идут **необязательные** дополнительные задания, которые могут принести вам дополнительные баллы в том числе в случае ошибок в предыдущих
+
+## Корреляционный анализ
+
+1) Создайте корреляционную матрицу с визуализацией и поправкой на множественные сравнения. Объясните, когда лучше использовать корреляционные матрицы и в чём минусы и плюсы корреляционных исследований.
+
+```{r}
+cor_matrix <- cor(cleaned_data[,quantitative_columns], use = "complete.obs", method = "spearman") # корреляция Cпирмена, потому что данные распределены ненормально
+cor_results <- rcorr(as.matrix(cleaned_data[,quantitative_columns])) # p-value для корреляций
+p_values <- cor_results$P
+p_adjusted <- p.adjust(p_values, method="BH") %>% matrix(nrow=8, ncol=8) %>% replace(is.na(.), 0)# Поправка на множественные сравнения методом Бенджамина-Хозберга
+rownames(p_adjusted) <- cleaned_data %>% select_if(is.numeric) %>% colnames()
+colnames(p_adjusted) <- cleaned_data %>% select_if(is.numeric) %>% colnames()
+
+
+corrplot(cor_matrix, method="color", type="upper", p.mat=p_adjusted, sig.level=0.05, insig="blank", tl.col="black", tl.srt=45)
+```
+Корреляционные матрицы могут быть полезны при планировании регрессионного анализа, чтобы быстро проверить отсутствие скоррелированных данных, и просто при поиске связанных переменных. Из плюсов анализа можно выделить быстроту и простоту его проведения как для количественных, так и качественных переменных, возможность выявить неочевидные связи в данных. Однако обычно его сложно интерпретировать, ведь корреляционный анализ не показывает природу связи(является ли она прямой или обусловлена конфаундером, что является причиной, а что следствием), а лишь ее наличие. Возможна ложная корреляция при непрезентативной выборке.
+
+## Моделирование
+
+1) Постройте регрессионную модель для переменной **TenYearCHD**. Опишите процесс построения
+
+```{r}
+set.seed(1337)
+# Деление выборки на train и test
+split <- sample.split(cleaned_data$coronary_heart_disease_in_10_years, SplitRatio = 0.7)
+train_data <- subset(cleaned_data, split == TRUE)
+test_data <- subset(cleaned_data, split == FALSE)
+
+# Создание модели на тренировочных данных по всем возможным предикторам, используется биноминальная модель, так как у coronary_heart_disease_in_10_years всего два исхода (No, Yes)
+model <- glm(coronary_heart_disease_in_10_years ~ ., data=train_data, family=binomial())
+# Выбор наилучших предикторов с помощью оценки по AIC
+best_model <- stepAIC(model, direction='backward')
+# Оценка модели с помощью ROC - кривых 
+summary(best_model)
+
+predicted_probabilities <- predict(best_model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+
+ROCRpred <- prediction(
+  predicted_probabilities,
+  test_data$coronary_heart_disease_in_10_years
+  )
+ROCRperf <- performance(ROCRpred, "tpr", "fpr")
+
+plot(ROCRperf, colorize = TRUE, main = "ROC Curve")
+```
+Для быстрой модели поучилось вполне неплохо, при TP~0.6 мы можем ожидать FP~0.2
+
+
+
+
