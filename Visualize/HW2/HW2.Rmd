@@ -1,0 +1,230 @@
+---
+title: "Homework 2"
+author: "Zolotikov Ustin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, error = FALSE, fig.width=16, fig.height=10)
+
+library(tidyverse)
+library(ggExtra)
+library(ggridges)
+library(ggpubr)
+
+theme_custom <- theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 25),
+    axis.text.x = element_text(angle = 12),
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    panel.background = element_rect(fill = "white", color = 'black'),
+    plot.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(color = "gray"),
+    panel.grid.minor = element_line(color = "lightgray")
+)
+
+data <- read_csv('data/hogwarts_2024.csv')
+```
+## Диаграммы рассеивания
+```{r 1_scatterplot}
+ggplot(data, aes(x=result, y=`Herbology exam`)) +
+  geom_point() +
+  theme_custom+
+  labs(x="Общая оценка", y="Оценка по травологии")+
+  geom_smooth(method="lm", se = FALSE)
+```
+```{r 2_multiple_scatterplot}
+data %>%
+  select(id, result, house, `Herbology exam`, `Muggle studies exam`, `Potions exam`, `Arithmancy exam`) %>% 
+  pivot_longer(cols=-c(id, result, house), names_to = "exam", values_to = "exam_result") %>% 
+  mutate(across(where(is.character),as_factor)) %>% 
+  ggplot(aes(x=result, y=exam_result, col=house)) +
+    geom_point(alpha=0.7) +
+    theme_custom+
+    facet_wrap(vars(exam), nrow=2, ncol=2) +
+    geom_smooth(method="lm", se = FALSE, col='red')+
+    scale_color_manual(values=c("Gryffindor" = "#C50000", 
+                               "Hufflepuff" = "#ECB939", 
+                               "Ravenclaw" = "#41A6D9", 
+                               "Slytherin" = "#1F5D25"))
+```
+
+На данном графике мы можем видеть, что в экзамене по Зельеварению доминирует Слизерин, а в остальных - Когтевран, оставшиеся факультеты распределены равномерно.
+
+```{r 3_groupping}
+data %>%
+  select(id, result, house, sex, `Herbology exam`, `Muggle studies exam`, `Potions exam`, `Arithmancy exam`) %>% 
+  pivot_longer(cols=-c(id, result, house, sex), names_to = "exam", values_to = "exam_result") %>% 
+  mutate(across(where(is.character),as_factor)) %>% 
+  ggplot(aes(x=result, y=exam_result, col=house)) +
+    geom_point(alpha=0.7) +
+    theme_custom+
+    geom_smooth(method="lm", se = FALSE, aes(color=sex))+
+    facet_wrap(vars(exam), nrow=2, ncol=2) +
+    scale_color_manual("", values=c("Gryffindor" = "#C50000", 
+                               "Hufflepuff" = "#ECB939", 
+                               "Ravenclaw" = "#41A6D9", 
+                               "Slytherin" = "#1F5D25",
+                               "female"="darkblue",
+                               "male"="#333333"))
+```
+
+## Бар-графики
+
+```{r 1_barplot}
+data %>% 
+  group_by(bloodStatus) %>% 
+  mutate(total_semester1 = sum(c_across(week_1:week_17))) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=bloodStatus, y=total_semester1, fill=bloodStatus))+
+  geom_col(position='dodge')+
+  theme_custom+
+  theme(axis.text.x = element_text(angle = 45))
+```
+
+Распределение такое, потому что больше всего студентов-полукровок и меньше всего магглов.
+
+```{r 2_barplot}
+data %>% 
+  group_by(bloodStatus) %>% 
+  mutate(total_semester1 = sum(c_across(week_1:week_17)),
+         n = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=fct_infreq(bloodStatus), y=total_semester1, fill=bloodStatus))+
+  geom_col(position='dodge')+
+  geom_label(aes(x=bloodStatus, y=total_semester1, label=n)) +
+  scale_x_discrete(labels=c("Полукровка", "Чистая кровь", "Маглорождённый")) +
+  scale_fill_discrete(labels=c("Полукровка", "Маглорождённый", "Чистая кровь")) +
+  labs(x="Происхождение", y="Количество баллов за первый семестр", fill="Происхождение")+
+  theme_custom+
+  theme(axis.text.x = element_text(angle = 45))
+```
+
+Да, гипотеза была верной
+
+И снова измените график – добавьте на него разбивку не только по
+происхождению, но и по полу. Раскрасьте столбцы по происхождению.
+Сделайте подписи к столбцам читаемыми. Дайте графику название,
+измените, если требуется, название осей. Сделайте шаг для оси, на
+которой отображены очки, через каждую тысячу баллов. Разместите
+текстовые метки по правому краю графика. Настройте график таким
+образом, чтобы метки были видны целиком и не обрезались. Сохраните
+график на устройство.(1.5 б.)
+
+```{r fig.height=8.9, fig.width=12}
+plot <- data %>% 
+  group_by(bloodStatus, sex) %>% 
+  summarize(total_semester1 = sum(c_across(week_1:week_17)),
+         n = n()) %>% 
+  select(sex, bloodStatus, total_semester1, n) %>% 
+  ungroup() %>%
+  ggplot(aes(x=fct_infreq(bloodStatus), y=total_semester1, fill=bloodStatus))+
+  geom_col(position='dodge')+
+  geom_label(aes(x=bloodStatus, y=total_semester1, label=n)) +
+  scale_x_discrete(labels=c("Полукровка", "Чистая кровь", "Маглорождённый")) +
+  scale_fill_discrete(labels=c("Полукровка", "Маглорождённый", "Чистая кровь")) +
+  labs(title="Распределение баллов по происхождению и полу", x="Происхождение", y="Количество баллов за первый семестр", fill="Происхождение")+
+  facet_wrap(~sex, labeller = as_labeller(c("male" = "Мужчина",
+      "female" = "Женщина")))+
+  ylim(c(-1000,9000))+
+  theme_custom+
+  scale_y_continuous(breaks=seq(-1000, 10000, 1000), position = "right")+
+  theme(axis.text.x = element_text(angle = 30), legend.position="left")
+
+ggsave('final_barplot.png', plot=plot, dpi = 300, width = 12, height=9)
+
+plot
+```
+
+**Задание 4**
+
+`coord_flip()` меняет местами координатные оси. Может быть полезна, когда функции визуализации не поддерживают параметр orientation, а также если имеешь дело с большим кодом и не хочется везде менять x и y переменные местами. Из минусов можно выделить лишь визуальный разворот графиков, то есть после применения для изменения графика нужно продолжать работать с x и y, как будто бы они не поменялись местами, что не совсем очевидно.
+
+## Разное
+
+```{r 1_different1, fig.height=8, fig.width=12}
+boxplots <- data %>%
+  select(id, `Study of ancient runes exam`, `Potions exam`) %>%
+  pivot_longer(cols=-id, values_to = "score", names_to = "Exam") %>%
+  mutate(across(where(is.character),as_factor)) %>% 
+  ggplot(aes(y = score, fill=Exam, x=Exam)) +
+    geom_boxplot() +
+    labs(x = "Exam", y = "Score") +
+    theme_minimal() +
+    theme_custom +
+    theme(axis.text.x = element_text(angle = 12))
+
+hist <- data %>% 
+  select(id, `Study of ancient runes exam`, `Potions exam`) %>%
+  pivot_longer(cols=-id, values_to = "score", names_to = "Exam") %>%
+  mutate(across(where(is.character),as_factor)) %>% 
+  ggplot(aes(x=score, fill=Exam)) +
+    geom_histogram(binwidth = 5, color = "black",position = "identity", alpha=0.7) +
+    labs(x = "Score", y="Number of students") +
+    theme_minimal() +
+    theme_custom +
+    coord_flip()
+
+dens <- data %>% 
+  select(id, `Study of ancient runes exam`, `Potions exam`) %>%
+  pivot_longer(cols=-id, values_to = "score", names_to = "Exam") %>%
+  mutate(across(where(is.character),as_factor)) %>% 
+  ggplot(aes(x=score, fill=Exam)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "score", y = "Density") +
+  theme_minimal()+
+  theme_custom +
+  xlab("Score")
+```
+
+```{r 1_different2, fig.height=12, fig.width=12}
+ggarrange(as_ggplot(text_grob("Score distribution by exam", size=25)), ggarrange(boxplots, hist+rremove("ylab"), ncol=2, legend = FALSE), dens, nrow=3, common.legend = TRUE, legend="bottom", heights=c(1,5,5))
+```
+
+```{r 2_different, fig.height=8, fig.width=8}
+plot1 <- data %>% 
+  select(id, `Potions exam`, bloodStatus) %>%
+  group_by(bloodStatus) %>% 
+  summarize(mean_score=mean(`Potions exam`), n=n()) %>% 
+  mutate(bloodStatus=fct_relevel(bloodStatus, "muggle-born", "pure-blood", "half-blood")) %>% 
+  ggplot(aes(x=fct_infreq(bloodStatus), fill=bloodStatus, y=mean_score)) +
+    geom_col() +
+    labs(x = "Blood status", y="Mean score in 'Potions exam'") +
+    theme_minimal() +
+    theme_custom +
+    theme(axis.text.x = element_text(angle = 12))+
+    geom_label(aes(label=n, y=mean_score)) +
+    scale_fill_manual("Blood status", values=c("muggle-born"="green", "half-blood"="red", "pure-blood"="blue"))
+
+plot1
+```
+
+Можно увидеть, что у магглорожденных ниже рейтинг, чем у полукровок и чистокровных, это может связано с дискриминацией на кафедре, если так, то это будет единственный экзамен с пониженными баллами магглорожденных. Давайте посмотрим на средние баллы в других экзаменах.
+
+```{r fig.height=10, fig.width=10}
+plot2 <- data %>% 
+  select(id, bloodStatus, ends_with('exam')) %>%
+  pivot_longer(cols=-c(id, bloodStatus), values_to = "score", names_to = "exam") %>%
+  group_by(bloodStatus, exam) %>% 
+  mutate(mean_score=mean(`score`), n=n(), .groups='drop') %>% 
+    ggplot(aes(x=fct_infreq(bloodStatus), fill=bloodStatus, y=mean_score)) +
+    theme_minimal() +
+    theme_custom +
+    facet_wrap(~exam, ncol = 3)+
+    geom_col(position="dodge") +
+    labs(x = "", y="Mean score") +
+    scale_x_discrete("Blood status")+
+    geom_label(aes(label=n, y=mean_score))+
+    theme(legend.position = "bottom", axis.ticks.x=element_blank())
+    
+```
+
+```{r fig.height=10, fig.width=50}
+plot3 <- ggarrange(plot1, plot2, ncol=2, widths=c(1,5)) # отображается слишком долго, так что я сохранил график в файл, отображен ниже
+```
+
+![ggarrange plot](./ggarrange_exams_and_mean_score_by_blood_status.jpg)
+
+Оказалось, что действительно, экзамен по зельеварению это единственный экзамен, в котором магглорожденные отстоют, что подкрепляет предположение о дискриминаци.
