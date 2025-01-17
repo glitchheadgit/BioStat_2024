@@ -1,0 +1,90 @@
+---
+title: "Управление данными (статистическое программирование)"
+author: "Устин Золотиков"
+date: "17.01.2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library (tidyverse)
+library (readxl)
+library(anytime)
+library(openxlsx)
+```
+
+### Задание
+
+Согласно спецификации собрать датасет с анамнезом субъектов ADMH на основе ADSL и домена MH. Спецификация содержит столбец Core со статусом переменной, наличие значений в Req-переменных критически важно для оценки. Приложите ссылку на свой гитхаб, в котором будет сохранена вся файловая структура архива; в папке ADaM-like должен находиться сделанный ADMH. Не забудьте приложить скрипт - он поможет разобраться в причинах ошибок (если они случатся) и дать вам рекомендации. 
+
+
+### Загрузка данных
+
+Для сборки ADMH нам понадобятся данные домена MH и собранный ADSL.
+
+```{r}
+mh <- read_excel("SDTM/MH_MEDICALHISTORY.xlsx")
+adsl <- read_excel("ADam-like/ADSL.xlsx")
+```
+
+```{r}
+mh %>% glimpse()
+```
+
+```{r}
+adsl %>% glimpse()
+```
+
+
+### Подготовка ADMH
+
+#### Отбор данных из ADSL
+```{r}
+adsl_part <- adsl %>% select(STUDYID, USUBJID, SUBJID, TRTP, TRTPN)
+```
+
+### Отбор и обработка данных из MH
+```{r}
+mh_part <- mh %>% 
+  filter(MHCAT == "Medical History") %>%
+  select( SUBJID, MHSEQ, 
+          MHCAT, MHTERM, 
+          MHDECOD, MHBODSYS, 
+          MHSTDTC, MHSTDTC,
+          MHENDTC, MHENRTPT
+  ) %>% 
+  mutate( MHSEQ = as.numeric(MHSEQ),
+          MHSTDTC = as.character(MHSTDTC),
+          MHENDTC = as.character(MHENDTC)
+  ) %>% 
+  group_by(SUBJID) %>% 
+  filter( !is.na(MHTERM) ) %>%
+  mutate(ASTDT = format(anydate(MHSTDTC), "%d.%m.%Y"),
+         ASTDTF = case_when(is.na(MHSTDTC) ~ NA),
+         AENDT = ifelse(MHENRTPT == "ONGOING", "ONGOING", format(anydate(MHENRTPT), "%d.%m.%Y")),
+         AENDTF = case_when(is.na(MHENDTC) ~ NA),
+         MHENRF = ifelse(MHENRTPT == "ONGOING", "ONGOING", NA))
+
+mh_part %>% glimpse()
+```
+### Объединение в ADMH
+
+```{r}
+admh <- left_join(adsl_part, mh_part, by = c("SUBJID")) %>% 
+  select(STUDYID, USUBJID, TRTP,
+         TRTPN, MHSEQ, MHCAT,
+         MHTERM, MHDECOD, MHBODSYS,
+         MHSTDTC, ASTDT, ASTDTF,
+         MHENDTC, AENDT, AENDTF,
+         MHENRTPT, MHENRF) %>%
+  filter(!is.na(MHCAT))
+
+admh %>% glimpse()
+```
+
+### Сохранение
+
+```{r}
+write.xlsx(admh, "ADaM-like/ADMH.xlsx")
+```
+
